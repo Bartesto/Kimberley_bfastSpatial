@@ -27,7 +27,7 @@ sceneListR <- function(dir2chk, wkdir, split = FALSE, txtname){
 sceneListR(dir2chk, wkdir, split, txtname)
 
 
-##individual txt files were manually edited to remove duplicates an dartifacts##
+##individual txt files were manually edited to remove duplicates and artifacts##
 
 
 
