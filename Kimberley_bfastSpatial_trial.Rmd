@@ -1,0 +1,155 @@
+---
+title: "Kimberley bfastSpatial Trial"
+author: "Bart Huntley"
+date: "3 November 2016"
+output: html_document
+---
+
+###Introduction
+The [bfastSpatial package](http://www.loicdutrieux.net/bfastSpatial/) in R puts forward a workflow for the consistent processing of Landsat data and produces interesting spatial outputs. The analysis and workflow documented here is intended for two purposes:
+
+* To produce products for analysis in a known location, and
+* To detail how others may get started with this package.
+
+There are multiple reasons as to why this package may be of use:
+
+* Automation.
+* Streamlines pre-processing and analysis.
+* By using surface reflectance derived products we put ourselves in context with research and results from around the world. Surface reflectance is the gold standard.
+
+Broadly speaking the following workflow can be divided into two sections:
+
+1. Accessing reflectance data products to use in the **bfastSpatial** package.
+2. Using the package for analysis.
+
+### Section 1 - Getting the Data
+The **bfastSpatial** package uses reflectance data which can be obtained from [LSRD (ESPA) web site](https://espa.cr.usgs.gov/index/). This site requires that you have a logon for use with USGS products. This is free and easily obtained. There are various ways to go about ordering and downloading the data and one method is well described [here](http://changemonitor-wur.github.io/deforestationmonitoring/). The method outlined in that tutorial presumes that you don't know what scenes you need. It is good to follow the section on **Retrieving scene ID's** but be aware the rest of the tutorial  uses NDMI for analysis which may not be the index you wish to use.
+
+####Getting scene ID's
+For the Kimberley, and the Mitchell Plateau in particular, the RSSA section has an archive of imagery that has been previously downloaded but is not reflectance data. The scene ID's of that imagery however is consistent so it can be used to generate the necessary scene list for use with the ESPA site.
+
+To get started we will use the script called "create_cdr_ordeR.R" as shown below. This part of the script will check for zipped files (tar or the more recent format tar.gz) and write the file names to text file. The way it is configured below it will make a separate text file per sensor to split the order into manageable chunks.
+```{r, eval=FALSE}
+
+dir2chk <- "W:\\usgs\\109070" # What folder to create the list from
+wkdir <- "D:\\RDEV2\\Kimberley_bfastSpatial" # Where to output the list as a txt file
+txtname <- "downloads.txt" # Basic txt file name
+split <- TRUE # Split list and make into one list per sensor (TRUE/FALSE)
+
+# Function creates lists of downloaded scenes held by DPaW
+sceneListR <- function(dir2chk, wkdir, split = FALSE, txtname){
+  setwd(dir2chk)
+  list.gz <- basename(list.files(pattern = glob2rx("*.tar|.tar.gz"), recursive = TRUE))
+  setwd(wkdir)
+  if(split == FALSE){
+    write.table(list.gz, file = txtname, col.names = FALSE, row.names = FALSE, 
+                quote = FALSE)
+  } else {
+    for(sensor in c("LT5", "LE7", "LC8")){
+      lind <- grepl(sensor, list.gz)
+      lout <- list.gz[lind]
+      lname <- paste0(sensor, "_", txtname)
+      write.table(lout, file = lname, col.names = FALSE, row.names = FALSE, 
+                  quote = FALSE)
+    }
+  }
+}
+
+#Run the function
+sceneListR(dir2chk, wkdir, split, txtname)
+
+```
+
+The archive of path row 109/070 held by the RSSA section is quite old and has duplicated scenes due to double downloads etc. The text files were manually edited to remove the obvious double ups and errors. Next the following loop from the same script is run to clean up the scene ID's (remove file extensions) and save out to new text files with the word "upload" in the name.
+
+```{r, eval=FALSE}
+
+# Loop to format upload txt files
+tlist <- list.files(pattern = ".txt")
+tnames <- substr(tlist, 1, 3)
+
+for(i in 1:length(tlist)){
+  d <- read.table(tlist[i], stringsAsFactors = FALSE)
+  write.table(substr(d[,1], 1, 21), paste0(tnames[i],"_upload.txt"), 
+              col.names = FALSE, row.names = FALSE, quote = FALSE) 
+}
+```
+
+The resultant text files will be those we use in the ESPA web page.
+
+####Placing the order
+Using the **New Order** selection on the [ESPA web site](https://espa.cr.usgs.gov/index/), click the **Choose File** button to navigate to one of the text files that were created above. There are many options and products available per scene and for more information and further links the website [**User Guide**](http://landsat.usgs.gov/documents/espa_odi_userguide.pdf) is a good place to start.
+
+For this trial the inputs chosen were:
+
+* CFMask
+* Surface Reflectance NDVI
+* Customisation Options
+    + Reproject Products - UTM South 51
+    
+**Note on CFMask**. The CFMask is a cloud mask created from Top Of Atmosphere data. The **bfastSpatial** package will handily cloud mask all of the ordered layers based on this data. As most of the scene ID's used for this order were generated from data that had been largely QA'd prior their original download, it is highly likely that the CFMask will not add much to this analysis. The strength of using this in future scenarios is that scenes can be "bulk" identified in Earth Explorer based on your selection criteria (e.g. sensor type, date range, specific months etc.) but also a rule of cloud cover rejection (e.g. anything > 80%). Any clouds missed by these filters should be handled by using the CFMask in **bfastSpatial** as demonstrated in the next section.
+
+
+Once you are happy with your selection for your order click the **Submit** button. You will receive notification from espa@usgs that your order has been placed if the order can be processed. In submitting these orders numerous errors were raised for each of the text files when attempted. There can be many reasons for this but in this instance it was due to:
+
+* Duplicate scene ID's.
+* The date of the scene falling within certain time periods (as specified on the USGS website) where certain data was not available to enable the conversion to surface reflectance.
+
+To avoid this last point I believe if you select scenes in Earth Explorer to generate scene lists and choose the reflectance products at that point, it will only generate appropriate ID's.
+
+You can track your order on the ESPA site by  **Show Orders**. This will list all of the orders (we did one per sensor) and each order ID starts with your email address. Clicking on any of these will take you through to the status of each scene within that order and if you wanted and they were available you can download the products scene by scene here. You will be notified by email when all the downloads are ready for an order and we will proceed to bulk download them from here. For the 505 scenes used in this trial it took maybe 2 hours for the orders to be processed.
+
+####Downloading the order
+There are a couple of ways to bulk download a complete order. One method uses a plugin for Firefox (free to use) called **Down Them All**. It uses the RSS feed to accomplish this and how to set it up is well documented in the [**User Guide**](http://landsat.usgs.gov/documents/espa_odi_userguide.pdf). We used a script written in Python which accesses the data via API and your user credentials.
+
+To do this (presuming you have git installed) open up a cmd prompt change directory to where you would like to store this script and paste the following in and hit enter.
+```{r, eval=FALSE}
+git clone https://github.com/USGS-EROS/espa-bulk-downloader.git bulk-downloader
+cd bulk-downloader
+python ./download_espa_order.py -h
+```
+
+If you don't have git then you can go to the [espa-bulk-downloader repository](https://github.com/USGS-EROS/espa-bulk-downloader), click the green **Clone or download button** and download the zip file. Extract the contents to somewhere useful and remember the path as you will need it for the next code chunk.
+
+To use the Python script you can use the following wrapper written in R and available in the R script "cdr_bdownR.R". For details on the option calls see the **README** at the link above. Its important to **NOTE** that you need to adjust the script as shown below to suit your needs. For instance:
+
+* pyPath - needs to be the path to the Python script.
+* email - needs to be your email address that is registered with USGS.
+* target - needs to be the path to where you want the downloaded data to go. Make sure that it has space.
+* user - needs to be your USGS username.
+* pass - needs to be your USGS password.
+
+Also **NOTE** that the order object has two options. Using ALL as per below will download all completed orders that you may have (this is a good option). The alternate is to replace ALL with a specific order ID (one is commented out at the bottom of the script as an example). This may be handy if the ESPA site is displaying old orders that you have already downloaded for another project. At present there doesn't seem to be a way to delete orders once attended to and they stay cuirrent for 10 days. Use individual order ID's so that you don't re-download unnecessary data.
+
+Lastly, as you alter the script below maintain the space between the option call (e.g "-e") and your input (e.g "dude@dpaw.wa.gov.au"")
+```{r, eval=FALSE}
+#Python script and path
+pyPath <- "where you put the Python script"
+pyScript <- "download_espa_order.py"
+py <- paste0(pyPath, "\\", pyScript)
+
+#Arguments
+email <- paste0("-e your email address used for USGS")
+order <- paste0("-o All")
+target <- paste0("-d where you want the data to go")
+user <- "-u your USGS username"
+pass <- "-p your USGS password"
+
+args <- paste(py, email, order, target, user, pass, sep =" ")
+
+shell(args)
+
+#An example of an order ID. Can be used instead of ALL for the -o option.
+#barthuntley@iinet.net.au-11032016-001812-872
+```
+
+The orders will slowlly appear in the nominated folder. When downloading the trial data it took somewhere between 3 and 6 mins per scene. This process is something best run overnight. If you have to nominate numerous order ID's then put the above code in a loop. If you do this please ensure that you are not hitting the ESPA site more than once per hour and that only 1 instance of the script is run at a time (i.e. only one set of credentials at a time). The downloading can be interrupted as it will only download scenes one time (per directory). As stated above if there are orders on the ESPA site that have been downloaded into another target directory then these will be downloaded again.
+
+
+
+
+
+
+
+
+
