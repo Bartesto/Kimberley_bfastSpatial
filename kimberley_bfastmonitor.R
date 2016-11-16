@@ -67,23 +67,23 @@ setwd(ndvi)
 timeStack(x=list, filename=stackName, datatype='INT2S', overwrite=TRUE)
 
 #read it back
-busstack <- brick("D:\\busswamp\\stack\\11283_1988-01-03_2016-05-07_stack.grd")
+kimstack <- brick(stackName)
                     
 
 # Some mucking around for interesting info
 
 # scenes in stack
-names(busstack)
+names(kimstack)
 # scenes and scene info
-stackinfo <- getSceneinfo(names(busstack))
+stackinfo <- getSceneinfo(names(kimstack))
 # number of observations per pixel
-obs <- countObs(busstack)
+obs <- countObs(kimstack)
 plot(obs)
 summary(obs)
 
 # make a histogram of scenes per year
 stackinfo$year <- as.numeric(substr(stackinfo$date, 1, 4))
-hist(stackinfo$year, breaks=c(1988:2016), main="p112r83: Scenes per Year", 
+hist(stackinfo$year, breaks=c(1986:2016), main="p109r70: Scenes per Year", 
      xlab="year", ylab="# of scenes")
 
 # some summary type plots
