@@ -1,4 +1,6 @@
-
+library(devtools)
+install_github('loicdtx/bfastSpatial')
+# load the package
 library(bfastSpatial)
 
 ##work in progress
@@ -7,19 +9,38 @@ library(bfastSpatial)
 
 
 ## Directories
-imdir <- "H:\\cdr_bulk\\kcdr"
-wkdir <- "D:\\RDEV2\\Kimberley_bfastSpatial"
-ndvi <- "D:\\RDEV2\\Kimberley_bfastSpatial\\ndvi"
-graphs <- "D:\\RDEV2\\Kimberley_bfastSpatial\\graphs"
+imdir <- "E:\\DOCUMENTATION\\BART\\kimberley_cdr_imagery"
+wkdir <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial"
+ndvi <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial_output\\ndvi"
+graphs <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial_output\\graphs"
 
 ## aoi - extent required for clip and to standardise all extents for stack
 shp <- "Kimberley_trial_extent"
 aoi <- readOGR(dsn = wkdir, layer = shp)
 
+## Testing and projecting the extent
+
+# process 1 full scene to obtain CRS
+list <- list.files(imdir, full.names = TRUE)
+processLandsat(x=list[1], vi='ndvi', outdir=ndvi, srdir=ndvi, delete=TRUE,
+               mask='fmask', keep=0, overwrite=TRUE)
+# Get CRS of scene ndvi to transform extent
+list <- list.files(ndvi, pattern=glob2rx('*ndvi*'), full.names=TRUE)
+crs(raster(list[1]))
+aoiT <- spTransform(aoi, crs(raster(list[1])))
+
+# test now with extent arg
+processLandsat(x=list[1], vi='ndvi', outdir=ndvi, srdir=ndvi, delete=TRUE,
+               mask='fmask', e = extent(aoiT), keep=0, overwrite=TRUE)
+list <- list.files(ndvi, pattern=glob2rx('*.grd'), full.names=TRUE)
+plot(r <- raster(list[1]))
+
+
+
 # Process each scene date with timer
 start <- Sys.time()
 processLandsatBatch(x=imdir, pattern=glob2rx('*.tar.gz'), outdir=ndvi, srdir=ndvi, 
-                    e = extent(aoi), delete=TRUE, vi='ndvi', mask='fmask', keep=0, 
+                    e = extent(aoiT), delete=TRUE, vi='ndvi', mask='fmask', keep=0, 
                     overwrite=TRUE)
 end <- Sys.time()
 total <- end - start
