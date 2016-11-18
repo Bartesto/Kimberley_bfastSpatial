@@ -3,16 +3,12 @@ install_github('loicdtx/bfastSpatial')
 # load the package
 library(bfastSpatial)
 
-##work in progress
-##copied from what worked with Busselton Swamp trial
-##this not working yet
-
 
 ## Directories
-imdir <- "E:\\DOCUMENTATION\\BART\\kimberley_cdr_imagery"
-wkdir <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial"
-ndvi <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial_output\\ndvi"
-graphs <- "E:\\DOCUMENTATION\\BART\\R\\RDEV\\Kimberley_bfastSpatial_output\\graphs"
+imdir <- "Z:\\DOCUMENTATION\\BART\\kimberley_cdr_imagery"
+wkdir <- "z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial"
+ndvi <- "Z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial_output\\ndvi"
+graphs <- "z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial_output\\graphs"
 
 ## aoi - extent required for clip and to standardise all extents for stack
 shp <- "Kimberley_trial_extent"
@@ -37,7 +33,8 @@ plot(r <- raster(list[1]))
 
 
 
-# Process each scene date with timer
+# Batch process each scene date with timer
+# process extracts ndvi cdr, clips to extent and masks layers with cfmask as necessary
 start <- Sys.time()
 processLandsatBatch(x=imdir, pattern=glob2rx('*.tar.gz'), outdir=ndvi, srdir=ndvi, 
                     e = extent(aoiT), delete=TRUE, vi='ndvi', mask='fmask', keep=0, 
@@ -68,7 +65,33 @@ timeStack(x=list, filename=stackName, datatype='INT2S', overwrite=TRUE)
 
 #read it back
 kimstack <- brick(stackName)
-                    
+
+## Due to length of processing suggest cropping to smaller aoi's for analysis
+## and visualisation
+
+shp2 <- "Bauxite_for_bp_trial_mga51"
+aoi_baux <- readOGR(dsn = wkdir, layer = shp2)
+cor_crs <- crs(kimstack)
+aoi_bauxT <- spTransform(aoi_baux, crs(kimstack))
+bauxstack <- crop(kimstack, aoi_bauxT)                   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Some mucking around for interesting info
 
@@ -87,10 +110,10 @@ hist(stackinfo$year, breaks=c(1986:2016), main="p109r70: Scenes per Year",
      xlab="year", ylab="# of scenes")
 
 # some summary type plots
-meanVI <- summaryBrick(busstack, fun=mean, na.rm=TRUE) # na.rm=FALSE by default
+meanVI <- summaryBrick(kimstack, fun=mean, na.rm=TRUE) # na.rm=FALSE by default
 plot(meanVI)
 
-annualMed <- annualSummary(busstack, fun=median, na.rm=TRUE)
+annualMed <- annualSummary(kimstack, fun=median, na.rm=TRUE)
 plot(annualMed)
 
 
