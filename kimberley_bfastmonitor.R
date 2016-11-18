@@ -75,22 +75,39 @@ cor_crs <- crs(kimstack)
 aoi_bauxT <- spTransform(aoi_baux, crs(kimstack))
 bauxstack <- crop(kimstack, aoi_bauxT)                   
 
+#plot(bauxstack)
+obs <- countObs(bauxstack)
+plot(obs)
 
+# scene info and histogram
+stackinfo <- getSceneinfo(names(bauxstack))
+stackinfo$year <- as.numeric(substr(stackinfo$date, 1, 4))
+hist(stackinfo$year, breaks=c(1986:2016), main="p109r70: Scenes per Year", 
+     xlab="year", ylab="# of scenes")
 
+plot(bauxstack, 40)
 
+#get monitoring points
+shp3 <- "Bauxite_for_bp_trial_mga51_pts"
+aoi_bauxP <- readOGR(dsn = wkdir, layer = shp3)
 
+# transform to correct CRS
+aoi_bauxPT <- spTransform(aoi_bauxP, crs(kimstack))
 
+bauxP_xy <- aoi_bauxPT@data[, c(3,4,5)]
+bau_003 <- as.numeric(round(bauxP_xy[1, c(1,2)]))
+bau_006 <- as.numeric(round(bauxP_xy[2, c(1,2)]))
+bau_009 <- as.numeric(round(bauxP_xy[3, c(1,2)]))
+bau_031 <- as.numeric(round(bauxP_xy[4, c(1,2)]))
+bau_048 <- as.numeric(round(bauxP_xy[5, c(1,2)]))
 
+bfm <- bfmPixel(bauxstack, history = "all", cell=bau_006, start=c(2009, 1))
+plot(bfm$bfm)
 
-
-
-
-
-
-
-
-
-
+sitenames <- c("bau_003", "bau_006", "bau_009", "bau_031", "bau_048")
+for(names in sitenames){
+  bfm1
+}
 
 
 # Some mucking around for interesting info

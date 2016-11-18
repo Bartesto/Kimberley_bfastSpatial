@@ -1,0 +1,144 @@
+---
+title: "Kimberley CDR Trial"
+author: "Bart Huntley"
+date: "18 November 2016"
+output: html_document
+---
+
+###Introduction
+This is a trial using the R package *'bfastspatial'* to identify breakpoints in ndvi timeseries data over the Mitchell Plateau in the Kimberley, WA. For this trial the Landsat data is reflectance (CDR) products downloaded from [ESPA](https://espa.cr.usgs.gov/ordering/new/). For a tutorial on using this package and links to how to access CDR data please refer to [this tutorial](http://www.loicdutrieux.net/bfastSpatial/).
+
+As this is a proof of concept and computation times can be lengthy, Only part of the Landsat scene 109/070 covering the Mitchell Plateau is used to process the original ndvi data from ESPA. The analysis is further constrained to a region of bauxite on the plateau for creation of the stack. This region contains 5 sites which have been previously used in the annual reports.
+
+The intention of this document is to set out code that can perform the analysis but not to run it as it takes susbtantial time.
+
+###Stage 1 - Getting the data ready for analysis
+
+**NOTE** Nearly all of the below processes take substantial time to run in R. As such there will be no 'live' output in this document. If you wish to work on a small canned example please refer to the tutorial.
+
+When CDR data is ordered from ESPA each scene arrives in a compressed file. Data ordered for this trial was the ndvi surface reflectance product and the CFMask (FMask created cloud, water and snow mask). The very first process in this stage entails getting the data out of the compressed file, clipping to an extent and saving our to a native raster format for R.
+
+This is all handled by a function from *'bfastspatial'*. What follows is working space setup and this initial processing. Be aware there are a multitude of options available for handling different VI's. Please refer to documentation for further info.
+
+Setup.
+```{r, eval = FALSE}
+## Load the packages
+library(devtools)
+install_github('loicdtx/bfastSpatial')
+library(bfastSpatial)
+
+## Directories
+imdir <- "Z:\\DOCUMENTATION\\BART\\kimberley_cdr_imagery"
+wkdir <- "z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial"
+ndvi <- "Z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial_output\\ndvi"
+graphs <- "z:\\DOCUMENTATION\\BART\\R\\R_DEV\\Kimberley_bfastSpatial_output\\graphs"
+```
+
+For this example the extent will be limited to an area of the Mitchell Plateau otherwise provide a shape file that defines the whole scene. It is wise to provide a shape file here even if you want to process the whole scene as this will force the extents of all layers (at this point scenes) to have identical extents.
+```{r, eval = FALSE}
+## aoi - extent required for clip and to standardise all extents for stack
+shp <- "Kimberley_trial_extent"
+aoi <- readOGR(dsn = wkdir, layer = shp)
+```
+
+Invariably the CRS of the CDR data and the shape file defining the extent will differ. Processing only one of the compressed files to gain the CDR data extents and then transforming the shape file to this is one way of dealing with this.
+```{r, eval = FALSE}
+# process 1 full scene to obtain CRS
+list <- list.files(imdir, full.names = TRUE)
+processLandsat(x=list[1], vi='ndvi', outdir=ndvi, srdir=ndvi, delete=TRUE,
+               mask='fmask', keep=0, overwrite=TRUE)
+# Get CRS of scene ndvi to transform extent
+list <- list.files(ndvi, pattern=glob2rx('*ndvi*'), full.names=TRUE)
+aoiT <- spTransform(aoi, crs(raster(list[1])))
+```
+
+Next up use the batch process function to extract clip and save out the CDR data. Choose output directories that suit the project just make sure they exist before running the batch process. In a run of 505 scenes this process took 3hours.
+```{r, eval = FALSE}
+# Batch process each scene date with timer
+# process extracts ndvi cdr, clips to extent and masks layers with cfmask as necessary
+start <- Sys.time()
+processLandsatBatch(x=imdir, pattern=glob2rx('*.tar.gz'), outdir=ndvi, srdir=ndvi, 
+                    e = extent(aoiT), delete=TRUE, vi='ndvi', mask='fmask', keep=0, 
+                    overwrite=TRUE)
+end <- Sys.time()
+total <- end - start
+total
+```
+
+Once finished its time to put it all together in a time stack. The stack is the raw data that all further analysis is performed on. My thoughts are for operational use, make a stack of the whole scene. Smaller stacks (to limit area of analysis and processing time) can then be 'cropped' from the larger stack as necessary. In this trial this method was used whereby the original extent is further cropped to a bauxite area.
+```{r, eval = FALSE}
+# Create stack folder
+stf <- file.path(dirname(imdir), 'stack')
+dir.create(stf, showWarnings=FALSE)
+
+# Data munging to create decent stack name
+grlist <- list.files(path = ndvi, pattern = glob2rx("*.grd"))
+shgrlist <- substr(grlist, 6, 21)
+info <- getSceneinfo(shgrlist)
+info <- dplyr::arrange(info, date)
+sdate <- dplyr::first(info$date)
+fdate <- dplyr::last(info$date)
+sname <- paste0(info$path[1], info$row[1], "_", sdate, "_", fdate, "_", 
+                "stack.grd")
+stackName <- file.path(stf, sname)
+
+# Make timestack raster brick
+list <- list.files(path = ndvi, pattern = glob2rx('*.grd'))
+setwd(ndvi)
+timeStack(x=list, filename=stackName, datatype='INT2S', overwrite=TRUE)
+
+#read it back
+kimstack <- brick(stackName)
+
+## Due to length of processing suggest cropping to smaller aoi's for analysis
+## and visualisation
+
+shp2 <- "Bauxite_for_bp_trial_mga51"
+aoi_baux <- readOGR(dsn = wkdir, layer = shp2)
+cor_crs <- crs(kimstack)
+aoi_bauxT <- spTransform(aoi_baux, crs(kimstack))
+bauxstack <- crop(kimstack, aoi_bauxT)              
+```
+
+From this process we have written to file a larger time stack. On disk it is called '10970_1986-09-21_2016-07-05_stack.grd' however in the workspace (i.e. when read back in) it is called kimstack. The smaller aoi for analysis has not been written to disk here but is an object called bauxstack.
+
+There are lots of different helper functions and things you can do with the stack. Here I get the scene info and also provide code to plot up a quick histogram to see the count of scenes per year.
+```{r, eval = FALSE}
+# scene info and histogram
+stackinfo <- getSceneinfo(names(bauxstack))
+stackinfo$year <- as.numeric(substr(stackinfo$date, 1, 4))
+hist(stackinfo$year, breaks=c(1986:2016), main="p109r70: Scenes per Year", 
+     xlab="year", ylab="# of scenes")
+```
+
+###Stage 2 - Individual pixel modelling to understand and the series and set parameters.
+
+For this trial the bauxite study area contained 5 points that have been previously used in annual reports and as such we are familiar with the data. The idea behind performing an analysis on individual pixels is to understand the time series and select modelling parameters that suit the data. As in most things, defaults do not necessarily work in all occasions. Again refer to the tutorial and papers written by the package authors for a deeper understanding.
+
+This pixel analysis does a number of things:
+
+1. Plots the original time series data
+2. Models the time series based on a 'stable history'. This can be set at "all" or "ROC".
+3. And ascertains if and when a break point occurs within a 'monitoring period'. This can be set as a single date or restrained to a period.
+
+The function always requires you to set at least a starting point for your monitoring period as this affects where the stable period lies. "all" is all dates preceeding the monitoring start date. "ROC" stands for reverse ordered CUSUM and deserves further explanation.
+
+In documentation within one of the functions within the package I found this explanation of the efp function that performs the ROC...phew here goes. 'efp will return a one-dimensional empirical fluctuation process of CUmulative SUms of residuals that are based on recursive residuals. The CUSUM algorithm fits a linear model to a time series. For each observation the standardized differences between the measurement and the linear model is calculated and cumulatively summed up. If the resulting process is in control, the cumulative sum of residuals fluctuate around zero. If the process is out of control, the sum of cumulated residuals will progressively depart from zero. As a mean to decide whether and when the process is out of control the Standard Brownian Motion (Wiener Process) is constructed as a limiting function. When the CUSUM function intersects the limiting function a change is assumed, followed by the estimation of the change time. ROC simply applies the CUSUM test in reverse order – beginning at the start of the monitoring period and cumulatively summing the residuals going backward in time until the CUSUM algorithm breaks. The time where it breaks is defined as a start time for the stable history period.'
+
+At this stage I am not sure which way of determining history is best. I feel that perhaps the default for the history determination ("ROC") is better than just having everything and is defensible through their paper. What you will need to play with however is the type of model you fit.
+
+Below shows how I use the shape file of 5 points and then create a loop to construct a number of models for comparison. The plots created and the model summaries should be used to work out what works best. Plots for visual check and summaries for R squared values.
+```{r, eval=FALSE}
+#get monitoring points
+shp3 <- "Bauxite_for_bp_trial_mga51_pts"
+aoi_bauxP <- readOGR(dsn = wkdir, layer = shp3)
+
+# transform to correct CRS
+aoi_bauxPT <- spTransform(aoi_bauxP, crs(kimstack))
+
+bauxP_xy <- aoi_bauxPT@data[, c(3,4,5)]
+bau_003 <- as.numeric(round(bauxP_xy[1, c(1,2)]))
+bau_006 <- as.numeric(round(bauxP_xy[2, c(1,2)]))
+bau_009 <- as.numeric(round(bauxP_xy[3, c(1,2)]))
+bau_031 <- as.numeric(round(bauxP_xy[4, c(1,2)]))
+bau_048 <- as.numeric(round(bauxP_xy[5, c(1,2)]))
